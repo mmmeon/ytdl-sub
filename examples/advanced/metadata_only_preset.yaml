@@ -1,0 +1,87 @@
+presets:
+  # Preset that downloads only metadata, thumbnails, and creates NFO files
+  # but skips downloading the actual video file
+  # Single season with sequential episode numbering
+  # requires "STRM file" plugin
+  _metadata_only_base:
+    preset:
+      - "_base"
+      - "_multi_url_bilateral"
+      - "_episode_base"
+
+    nfo_tags:
+      nfo_name: "{episode_file_path}.nfo"
+      nfo_root: "episodedetails"
+      tags:
+        title: "{episode_title}"
+        plot: "{episode_plot}"
+        year: "{episode_year}"
+        aired: "{episode_date_standardized}"
+        season: "{season_number}"
+        episode: "{episode_number}"
+        genre:
+          - "{tv_show_genre}"
+        source:
+          - "{webpage_url_sanitized}"
+        thumb: "{thumbnail_file_name}"
+      kodi_safe: False
+
+    output_directory_nfo_tags:
+      nfo_name: "tvshow.nfo"
+      nfo_root: "tvshow"
+      tags:
+        title: "{tv_show_name}"
+        genre:
+          - "{tv_show_genre}"
+        source:
+          - "{url}"
+
+    strm_file:
+      strm_file_name: "{episode_file_path}.strm"
+      strm_proxy_url: "{strm_proxy}"
+      video_id_variable: "{uid}"
+
+    ytdl_options:
+      skip_download: True
+      writethumbnail: True
+      writeinfojson: True
+      writedescription: True
+      break_on_existing: False
+
+    output_options:
+      maintain_download_archive: True
+
+    overrides:
+      season_number: 1
+      season_number_padded: "01"
+      episode_number: "{download_index}"
+      episode_number_padded: "{ %pad_zero(download_index, 5) }"
+      strm_proxy: "http://localhost:5505/proxy/"
+      episode_plot: "{description}"
+      episode_title: "{title}"
+      thumbnail_file_name: "{episode_file_path}.{thumbnail_ext}"
+
+  # All-in-one preset with sequential episode numbering (download order)
+  "Metadata Only":
+    preset:
+      - "_metadata_only_base"
+
+  # Alternative: Use upload date as episode number (YYYYMMDD format)
+  "Metadata Only - Upload Date":
+    preset:
+      - "_metadata_only_base"
+    overrides:
+      episode_number: "{ %concat(upload_year, upload_month_padded, upload_day_padded, upload_date_index) }"
+      episode_number_padded: "{episode_number}"
+
+  # Alternative: Organize by year seasons with month-day episodes
+  "Metadata Only - By Year":
+    preset:
+      - "_metadata_only_base"
+      - "season_by_year__episode_by_month_day"
+    overrides:
+      # Override the base preset's single season setting
+      season_number: "{upload_year}"
+      season_number_padded: "{upload_year}"
+      episode_number: "{ %concat(upload_month, upload_day_padded) }"
+      episode_number_padded: "{ %pad_zero(%int(episode_number), 4) }"
