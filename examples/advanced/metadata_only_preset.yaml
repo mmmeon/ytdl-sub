@@ -2,7 +2,23 @@ presets:
   # Preset that downloads only metadata, thumbnails, and creates NFO files
   # but skips downloading the actual video file
   # Single season with sequential episode numbering
-  # requires "STRM file" plugin
+  #
+  # NOTE: Consider using the prebuilt "STRM" preset instead of defining this manually.
+  # The "STRM" preset automatically handles skip_download and can be combined with
+  # any TV Show preset:
+  #
+  #   "Jellyfin TV Show by Date":
+  #     preset:
+  #       - "STRM"
+  #       - "Jellyfin TV Show by Date"
+  #
+  # Or for recent downloads + strm for older content:
+  #
+  #   "Jellyfin TV Show by Date":
+  #     preset:
+  #       - "Only Recent STRM Archive"
+  #       - "Jellyfin TV Show by Date"
+  #
   _metadata_only_base:
     preset:
       - "_base"
@@ -37,12 +53,10 @@ presets:
           - "{url}"
 
     strm_file:
-      strm_file_name: "{episode_file_path}.strm"
       strm_proxy_url: "{strm_proxy}"
       video_id_variable: "{uid}"
 
     ytdl_options:
-      skip_download: True
       writethumbnail: True
       writeinfojson: True
       writedescription: True

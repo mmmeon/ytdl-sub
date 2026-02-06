@@ -65,6 +65,7 @@ class PluginMapping:
         ThrottleProtectionPlugin,
         UrlDownloaderCollectionVariablePlugin,
         SubtitlesPlugin,
+        StrmFilePlugin,
         FilterExcludePlugin,
         FilterIncludePlugin,
         # add all others
@@ -74,6 +75,7 @@ class PluginMapping:
         UrlDownloaderThumbnailPlugin,
         AudioExtractPlugin,
         FileConvertPlugin,
+        StrmFilePlugin,
         ChaptersPlugin,
         SplitByChaptersPlugin,
         FilterExcludePlugin,
