@@ -15,7 +15,7 @@ presets:
 
     overrides:
       strm_proxy_url: "http://localhost:8096/proxy/"
-      strm_video_id: "{id}"
+      strm_video_id: "{uid}"
 
   #############################################################################
   # Only Recent STRM Archive
@@ -51,7 +51,7 @@ presets:
 
       # Streaming proxy settings
       strm_proxy_url: "http://localhost:8096/proxy/"
-      strm_video_id: "{id}"
+      strm_video_id: "{uid}"
 
   #############################################################################
   # Only Recent STRM
