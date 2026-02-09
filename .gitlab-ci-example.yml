@@ -1,0 +1,280 @@
+# Example GitLab CI/CD configuration for building ytdl-sub Docker images
+# Copy this to .gitlab-ci.yml to enable automated builds
+
+stages:
+  - prepare
+  - build
+  - test
+  - push
+
+variables:
+  REGISTRY: $CI_REGISTRY
+  IMAGE_NAME: $CI_REGISTRY_IMAGE
+  DOCKER_DRIVER: overlay2
+  # Use Podman instead of Docker
+  BUILDAH_FORMAT: docker
+  BUILDAH_ISOLATION: chroot
+
+# Build Python wheel and stage files
+prepare:wheel:
+  stage: prepare
+  image: python:3.11-slim
+  before_script:
+    - apt-get update && apt-get install -y git make curl
+    - curl -LsSf https://astral.sh/uv/install.sh | sh
+    - export PATH="$HOME/.cargo/bin:$PATH"
+  script:
+    - uv venv .venv
+    - source .venv/bin/activate
+    - uv pip install build
+    # Create pip3 wrapper
+    - |
+      cat > .venv/bin/pip << 'EOF'
+      #!/bin/bash
+      exec uv pip "$@"
+      EOF
+    - chmod +x .venv/bin/pip
+    - ln -sf pip .venv/bin/pip3
+    - make wheel
+    - make docker_stage
+  artifacts:
+    paths:
+      - docker/root/*.whl
+      - docker/root/defaults/
+      - dist/
+    expire_in: 1 hour
+
+# Build headless Docker image
+build:headless:
+  stage: build
+  needs:
+    - prepare:wheel
+  image: quay.io/buildah/stable
+  before_script:
+    - buildah version
+  script:
+    - buildah bud
+        --format=docker
+        --layers
+        --tag $IMAGE_NAME:$CI_COMMIT_SHORT_SHA
+        --tag $IMAGE_NAME:latest
+        --file docker/Dockerfile
+        docker/
+  after_script:
+    # Save image for testing
+    - buildah push $IMAGE_NAME:$CI_COMMIT_SHORT_SHA docker-archive:image.tar
+  artifacts:
+    paths:
+      - image.tar
+    expire_in: 1 hour
+  only:
+    - branches
+    - tags
+
+# Build Ubuntu variant
+build:ubuntu:
+  stage: build
+  needs:
+    - prepare:wheel
+  image: quay.io/buildah/stable
+  script:
+    - buildah bud
+        --format=docker
+        --layers
+        --tag $IMAGE_NAME:$CI_COMMIT_SHORT_SHA-ubuntu
+        --tag $IMAGE_NAME:ubuntu
+        --file docker/Dockerfile.ubuntu
+        docker/
+  only:
+    - tags
+    - master
+    - main
+
+# Build GUI variant
+build:gui:
+  stage: build
+  needs:
+    - prepare:wheel
+  image: quay.io/buildah/stable
+  script:
+    - buildah bud
+        --format=docker
+        --layers
+        --tag $IMAGE_NAME:$CI_COMMIT_SHORT_SHA-gui
+        --tag $IMAGE_NAME:gui
+        --file docker/Dockerfile.gui
+        docker/
+  only:
+    - tags
+    - master
+    - main
+
+# Test the built image
+test:functionality:
+  stage: test
+  needs:
+    - build:headless
+  image: quay.io/podman/stable
+  before_script:
+    - podman load -i image.tar
+  script:
+    # Test help command
+    - podman run --rm $IMAGE_NAME:$CI_COMMIT_SHORT_SHA ytdl-sub --help
+    # Test version command
+    - podman run --rm $IMAGE_NAME:$CI_COMMIT_SHORT_SHA ytdl-sub --version
+    # Test with minimal config
+    - |
+      mkdir -p test-config
+      cat > test-config/config.yaml << 'EOF'
+      configuration:
+        working_directory: "/config"
+      EOF
+    - podman run --rm -v ./test-config:/config:Z $IMAGE_NAME:$CI_COMMIT_SHORT_SHA ytdl-sub view
+  only:
+    - branches
+    - tags
+
+# Test image security
+test:security:
+  stage: test
+  needs:
+    - build:headless
+  image: aquasec/trivy:latest
+  script:
+    - trivy image --severity HIGH,CRITICAL --exit-code 0 --input image.tar
+  allow_failure: true
+  only:
+    - branches
+    - tags
+
+# Push to registry
+push:registry:
+  stage: push
+  needs:
+    - build:headless
+    - test:functionality
+  image: quay.io/buildah/stable
+  before_script:
+    - buildah version
+    - echo "$CI_REGISTRY_PASSWORD" | buildah login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+  script:
+    # Load image
+    - buildah pull docker-archive:image.tar
+    
+    # Tag for branch/tag
+    - |
+      if [ "$CI_COMMIT_TAG" != "" ]; then
+        buildah tag $IMAGE_NAME:$CI_COMMIT_SHORT_SHA $IMAGE_NAME:$CI_COMMIT_TAG
+        buildah tag $IMAGE_NAME:$CI_COMMIT_SHORT_SHA $IMAGE_NAME:latest
+        buildah push $IMAGE_NAME:$CI_COMMIT_TAG
+        buildah push $IMAGE_NAME:latest
+      elif [ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]; then
+        buildah tag $IMAGE_NAME:$CI_COMMIT_SHORT_SHA $IMAGE_NAME:latest
+        buildah push $IMAGE_NAME:latest
+      else
+        buildah tag $IMAGE_NAME:$CI_COMMIT_SHORT_SHA $IMAGE_NAME:$CI_COMMIT_BRANCH
+        buildah push $IMAGE_NAME:$CI_COMMIT_BRANCH
+      fi
+    
+    - buildah push $IMAGE_NAME:$CI_COMMIT_SHORT_SHA
+  only:
+    - branches
+    - tags
+
+# Push variants to registry
+push:variants:
+  stage: push
+  needs:
+    - build:ubuntu
+    - build:gui
+  image: quay.io/buildah/stable
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | buildah login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+  script:
+    - buildah push $IMAGE_NAME:$CI_COMMIT_SHORT_SHA-ubuntu
+    - buildah push $IMAGE_NAME:ubuntu
+    - buildah push $IMAGE_NAME:$CI_COMMIT_SHORT_SHA-gui
+    - buildah push $IMAGE_NAME:gui
+  only:
+    - tags
+    - master
+    - main
+
+# Optional: Multi-arch builds
+build:multiarch:
+  stage: build
+  needs:
+    - prepare:wheel
+  image: quay.io/buildah/stable
+  script:
+    - |
+      # Build for AMD64
+      buildah bud \
+        --arch amd64 \
+        --format=docker \
+        --manifest $IMAGE_NAME:$CI_COMMIT_SHORT_SHA-multiarch \
+        --file docker/Dockerfile \
+        docker/
+      
+      # Build for ARM64
+      buildah bud \
+        --arch arm64 \
+        --format=docker \
+        --manifest $IMAGE_NAME:$CI_COMMIT_SHORT_SHA-multiarch \
+        --file docker/Dockerfile \
+        docker/
+      
+      # Push manifest
+      buildah manifest push --all \
+        $IMAGE_NAME:$CI_COMMIT_SHORT_SHA-multiarch \
+        docker://$IMAGE_NAME:$CI_COMMIT_TAG
+  only:
+    - tags
+  tags:
+    - multiarch
+
+# Create release notes
+release:notes:
+  stage: push
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache git curl jq
+  script:
+    - |
+      cat > release-notes.md << EOF
+      ## Docker Images
+      
+      ### Headless (Alpine-based)
+      \`\`\`bash
+      docker pull $IMAGE_NAME:$CI_COMMIT_TAG
+      docker pull $IMAGE_NAME:latest
+      \`\`\`
+      
+      ### Ubuntu-based
+      \`\`\`bash
+      docker pull $IMAGE_NAME:$CI_COMMIT_TAG-ubuntu
+      \`\`\`
+      
+      ### GUI-enabled
+      \`\`\`bash
+      docker pull $IMAGE_NAME:$CI_COMMIT_TAG-gui
+      \`\`\`
+      
+      ## Usage
+      
+      \`\`\`bash
+      docker run --rm -v /path/to/config:/config $IMAGE_NAME:$CI_COMMIT_TAG ytdl-sub -h
+      \`\`\`
+      
+      ## What's Changed
+      
+      - Built from commit: $CI_COMMIT_SHORT_SHA
+      - Build date: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+      - Pipeline: $CI_PIPELINE_URL
+      EOF
+    - cat release-notes.md
+  artifacts:
+    paths:
+      - release-notes.md
+  only:
+    - tags

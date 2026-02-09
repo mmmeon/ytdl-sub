@@ -1,0 +1,233 @@
+# Extended Makefile for building Docker images with automated environment setup
+# 
+# Usage:
+#   make -f Makefile.build setup    # Setup build environment
+#   make -f Makefile.build docker   # Build headless Docker image (full setup + build)
+#   make -f Makefile.build all      # Build all variants
+#
+# This Makefile wraps the setup-build-environment.sh script and provides
+# convenient targets for building Docker images with proper environment setup.
+
+.PHONY: help setup check build-headless build-ubuntu build-gui all clean-docker test-docker
+
+# Default target
+.DEFAULT_GOAL := help
+
+# Detect container runtime
+CONTAINER_CMD := $(shell command -v podman 2> /dev/null || command -v docker 2> /dev/null)
+ifeq ($(CONTAINER_CMD),)
+$(error Neither podman nor docker found. Please install one of them.)
+endif
+
+# Determine if sudo is needed for docker
+DOCKER_SUDO :=
+ifeq ($(shell basename $(CONTAINER_CMD)),docker)
+ifeq ($(shell $(CONTAINER_CMD) info > /dev/null 2>&1 || echo need-sudo),need-sudo)
+DOCKER_SUDO := sudo
+endif
+endif
+
+# Image tag
+IMAGE_TAG ?= local
+IMAGE_NAME ?= ytdl-sub
+
+help: ## Show this help message
+	@echo "ytdl-sub Docker Build Targets"
+	@echo "=============================="
+	@echo ""
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
+	@echo ""
+	@echo "Environment:"
+	@echo "  Container runtime: $(CONTAINER_CMD)"
+	@echo "  Sudo required: $(if $(DOCKER_SUDO),yes,no)"
+	@echo "  Image name: $(IMAGE_NAME):$(IMAGE_TAG)"
+
+check: ## Check prerequisites for building
+	@echo "Checking prerequisites..."
+	@command -v python3 >/dev/null 2>&1 || { echo "ERROR: python3 not found"; exit 1; }
+	@echo "✓ Python 3 found: $$(python3 --version)"
+	@command -v git >/dev/null 2>&1 || { echo "WARNING: git not found"; }
+	@echo "✓ Git found: $$(git --version)"
+	@echo "✓ Container runtime: $(CONTAINER_CMD)"
+	@[ -f setup-build-environment.sh ] || { echo "ERROR: setup-build-environment.sh not found"; exit 1; }
+	@echo "✓ Setup script found"
+	@echo ""
+	@echo "All prerequisites satisfied!"
+
+setup: check ## Setup build environment (Python venv, dependencies)
+	@echo "Setting up build environment..."
+	@./setup-build-environment.sh --skip-podman-check 2>&1 | tee setup.log || { \
+		echo ""; \
+		echo "Setup encountered issues. Check setup.log for details."; \
+		echo ""; \
+		if grep -q "permission denied" setup.log; then \
+			echo "Podman permission issue detected. Try:"; \
+			echo "  1. Configure subuid/subgid: see BUILD_ENVIRONMENT.md"; \
+			echo "  2. Run: podman system migrate"; \
+			echo "  3. Or use Docker: make -f Makefile.build setup CONTAINER_CMD=docker"; \
+		fi; \
+		exit 1; \
+	}
+
+build-headless: ## Build headless Docker image (includes setup)
+	@echo "Building headless Docker image..."
+	@if [ ! -d .venv ] || [ ! -f docker/root/*.whl ]; then \
+		echo "Environment not ready. Running setup first..."; \
+		$(MAKE) -f Makefile.build setup; \
+	fi
+	@echo "Building with $(CONTAINER_CMD)..."
+	$(DOCKER_SUDO) $(CONTAINER_CMD) build \
+		--progress=plain \
+		--no-cache \
+		-t $(IMAGE_NAME):$(IMAGE_TAG) \
+		-t $(IMAGE_NAME):latest \
+		docker/
+	@echo ""
+	@echo "✓ Build complete!"
+	@echo "  Image: $(IMAGE_NAME):$(IMAGE_TAG)"
+	@echo ""
+	@echo "Test with: $(CONTAINER_CMD) run --rm $(IMAGE_NAME):$(IMAGE_TAG) ytdl-sub --version"
+
+build-ubuntu: ## Build Ubuntu-based Docker image
+	@echo "Building Ubuntu Docker image..."
+	@if [ ! -d .venv ] || [ ! -f docker/root/*.whl ]; then \
+		echo "Environment not ready. Running setup first..."; \
+		$(MAKE) -f Makefile.build setup; \
+	fi
+	$(DOCKER_SUDO) $(CONTAINER_CMD) build \
+		--progress=plain \
+		--no-cache \
+		-t $(IMAGE_NAME):$(IMAGE_TAG)-ubuntu \
+		-f docker/Dockerfile.ubuntu \
+		docker/
+	@echo ""
+	@echo "✓ Ubuntu build complete!"
+	@echo "  Image: $(IMAGE_NAME):$(IMAGE_TAG)-ubuntu"
+
+build-gui: ## Build GUI-enabled Docker image
+	@echo "Building GUI Docker image..."
+	@if [ ! -d .venv ] || [ ! -f docker/root/*.whl ]; then \
+		echo "Environment not ready. Running setup first..."; \
+		$(MAKE) -f Makefile.build setup; \
+	fi
+	$(DOCKER_SUDO) $(CONTAINER_CMD) build \
+		--progress=plain \
+		--no-cache \
+		-t $(IMAGE_NAME):$(IMAGE_TAG)-gui \
+		-f docker/Dockerfile.gui \
+		docker/
+	@echo ""
+	@echo "✓ GUI build complete!"
+	@echo "  Image: $(IMAGE_NAME):$(IMAGE_TAG)-gui"
+
+all: build-headless build-ubuntu build-gui ## Build all image variants
+	@echo ""
+	@echo "=============================="
+	@echo "All builds complete!"
+	@echo "=============================="
+	@echo "Available images:"
+	@$(DOCKER_SUDO) $(CONTAINER_CMD) images $(IMAGE_NAME)
+
+docker: build-headless ## Alias for build-headless
+
+test-docker: ## Test the built Docker image
+	@echo "Testing $(IMAGE_NAME):$(IMAGE_TAG)..."
+	@$(DOCKER_SUDO) $(CONTAINER_CMD) run --rm $(IMAGE_NAME):$(IMAGE_TAG) ytdl-sub --version || { \
+		echo "ERROR: Container test failed"; \
+		exit 1; \
+	}
+	@echo ""
+	@echo "Testing help command..."
+	@$(DOCKER_SUDO) $(CONTAINER_CMD) run --rm $(IMAGE_NAME):$(IMAGE_TAG) ytdl-sub --help > /dev/null
+	@echo ""
+	@echo "Testing with minimal config..."
+	@mkdir -p test-output
+	@echo 'configuration:\n  working_directory: "/config"' > test-output/config.yaml
+	@$(DOCKER_SUDO) $(CONTAINER_CMD) run --rm -v ./test-output:/config $(IMAGE_NAME):$(IMAGE_TAG) ytdl-sub view
+	@rm -rf test-output
+	@echo ""
+	@echo "✓ All tests passed!"
+
+clean-docker: ## Remove built Docker images
+	@echo "Removing Docker images..."
+	@$(DOCKER_SUDO) $(CONTAINER_CMD) rmi -f $(IMAGE_NAME):$(IMAGE_TAG) 2>/dev/null || true
+	@$(DOCKER_SUDO) $(CONTAINER_CMD) rmi -f $(IMAGE_NAME):latest 2>/dev/null || true
+	@$(DOCKER_SUDO) $(CONTAINER_CMD) rmi -f $(IMAGE_NAME):$(IMAGE_TAG)-ubuntu 2>/dev/null || true
+	@$(DOCKER_SUDO) $(CONTAINER_CMD) rmi -f $(IMAGE_NAME):$(IMAGE_TAG)-gui 2>/dev/null || true
+	@echo "✓ Images removed"
+
+clean-all: clean-docker ## Clean everything (images, venv, build artifacts)
+	@echo "Cleaning build artifacts..."
+	@rm -rf .venv dist build src/ytdl_sub.egg-info docker/root/*.whl docker/root/defaults/examples
+	@echo "✓ Clean complete"
+
+# Quick targets for development
+quick-build: ## Quick rebuild without cache clearing
+	@if [ ! -d .venv ]; then $(MAKE) -f Makefile.build setup; fi
+	@. .venv/bin/activate && make wheel && make docker_stage
+	$(DOCKER_SUDO) $(CONTAINER_CMD) build -t $(IMAGE_NAME):$(IMAGE_TAG) docker/
+	@echo "✓ Quick build complete"
+
+rebuild: clean-all all ## Full rebuild from scratch
+
+show-images: ## Show all ytdl-sub images
+	@$(DOCKER_SUDO) $(CONTAINER_CMD) images $(IMAGE_NAME)
+
+# CI/CD targets
+ci-setup: ## Setup for CI/CD environment
+	@./setup-build-environment.sh --skip-podman-check
+
+ci-build: ci-setup build-headless test-docker ## Build and test for CI/CD
+
+ci-build-all: ci-setup all ## Build all variants for CI/CD
+
+# Development helpers
+dev-shell: ## Open a shell in the build container
+	$(DOCKER_SUDO) $(CONTAINER_CMD) run --rm -it \
+		-v $(PWD)/config:/config \
+		--entrypoint /bin/bash \
+		$(IMAGE_NAME):$(IMAGE_TAG)
+
+dev-run: ## Run ytdl-sub with mounted config directory
+	@if [ ! -d config ]; then mkdir -p config; fi
+	$(DOCKER_SUDO) $(CONTAINER_CMD) run --rm -it \
+		-v $(PWD)/config:/config \
+		-v $(PWD)/downloads:/downloads \
+		$(IMAGE_NAME):$(IMAGE_TAG) \
+		ytdl-sub
+
+# Tagging and pushing
+tag: ## Tag image for registry (requires REGISTRY variable)
+ifndef REGISTRY
+	@echo "ERROR: REGISTRY variable not set"
+	@echo "Usage: make -f Makefile.build tag REGISTRY=my-registry.com/myuser"
+	@exit 1
+endif
+	@echo "Tagging for registry: $(REGISTRY)"
+	$(DOCKER_SUDO) $(CONTAINER_CMD) tag $(IMAGE_NAME):$(IMAGE_TAG) $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
+	$(DOCKER_SUDO) $(CONTAINER_CMD) tag $(IMAGE_NAME):$(IMAGE_TAG) $(REGISTRY)/$(IMAGE_NAME):latest
+	@echo "✓ Tagged as:"
+	@echo "  $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
+	@echo "  $(REGISTRY)/$(IMAGE_NAME):latest"
+
+push: tag ## Push image to registry (requires REGISTRY variable)
+	@echo "Pushing to registry..."
+	$(DOCKER_SUDO) $(CONTAINER_CMD) push $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
+	$(DOCKER_SUDO) $(CONTAINER_CMD) push $(REGISTRY)/$(IMAGE_NAME):latest
+	@echo "✓ Push complete"
+
+# Documentation
+docs: ## Generate documentation
+	@echo "Build Environment Setup: BUILD_ENVIRONMENT.md"
+	@echo "Setup Script: setup-build-environment.sh"
+	@echo "CI/CD Examples:"
+	@echo "  - GitHub Actions: .github/workflows/build-docker-example.yml"
+	@echo "  - GitLab CI: .gitlab-ci-example.yml"
+	@echo "  - Docker Compose: docker-compose.build.yml"
+
+version: ## Show version information
+	@if [ -d .venv ]; then \
+		. .venv/bin/activate && python3 -c "from src.ytdl_sub import __local_version__; print('Version:', __local_version__)"; \
+	else \
+		echo "Virtual environment not setup. Run 'make -f Makefile.build setup' first."; \
+	fi
