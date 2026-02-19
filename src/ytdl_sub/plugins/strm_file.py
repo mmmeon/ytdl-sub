@@ -126,7 +126,6 @@ class StrmFileOptions(ToggleableOptionsDictValidator):
         return {PluginOperation.MODIFY_ENTRY: {v.ext.variable_name}}
 
 
-
 class StrmFilePlugin(Plugin[StrmFileOptions]):
     plugin_options_type = StrmFileOptions
 
@@ -177,13 +176,38 @@ class StrmFilePlugin(Plugin[StrmFileOptions]):
             FileHandler.delete(strm_file_path)
 
     def _is_entry_before_threshold(self, entry: Entry) -> bool:
-        """Check if the entry's upload_date is before strm_before threshold."""
-        assert self.plugin_options.strm_before is not None
+        """
+        Check if the entry's upload_date is before strm_before threshold.
+
+        Returns False if strm_before is not set (should not happen in conditional mode).
+        Uses proper datetime comparison instead of string comparison.
+        """
+        if self.plugin_options.strm_before is None:
+            return False
+
         threshold_str = self.overrides.apply_formatter(
             formatter=self.plugin_options.strm_before
         )
-        threshold_date = datetime_from_str(threshold_str).date().strftime("%Y%m%d")
-        entry_date = entry.get(v.upload_date, str)
+        threshold_date = datetime_from_str(threshold_str).date()
+
+        entry_date_str = entry.try_get(v.upload_date, str)
+        if entry_date_str is None:
+            logger.warning(
+                "Entry '%s' has no upload_date, skipping .strm creation",
+                entry.title,
+            )
+            return False
+
+        try:
+            entry_date = datetime_from_str(entry_date_str).date()
+        except Exception:
+            logger.warning(
+                "Entry '%s' has malformed upload_date '%s', skipping .strm creation",
+                entry.title,
+                entry_date_str,
+            )
+            return False
+
         return entry_date < threshold_date
 
     # ── lifecycle hooks ──────────────────────────────────────────────────────
@@ -210,7 +234,8 @@ class StrmFilePlugin(Plugin[StrmFileOptions]):
 
         if self._is_entry_before_threshold(entry):
             logger.info(
-                "Creating .strm file for '%s' (upload date before threshold)", entry.title
+                "Creating .strm file for '%s' (upload date before threshold)",
+                entry.title,
             )
             self._write_and_save_strm(entry)
             self._strm_entries.add(entry.ytdl_uid())
