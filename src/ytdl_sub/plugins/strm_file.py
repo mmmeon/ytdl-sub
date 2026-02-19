@@ -133,22 +133,61 @@ class StrmFilePlugin(Plugin[StrmFileOptions]):
         super().__init__(*args, **kwargs)
         # Track entries handled at metadata time so we skip them in modify_entry
         self._strm_entries: set = set()
+        # Track total entries processed for memory management cleanup
+        self._total_entries_processed: int = 0
+        # Cleanup threshold: after this many entries, we'll clear old entries from the set
+        self._cleanup_threshold: int = 1000
 
     # ── helpers ──────────────────────────────────────────────────────────────
 
+    def _add_strm_entry(self, uid: str) -> None:
+        """
+        Add an entry UID to the strm entries set with memory management.
+        Periodically cleans up the set to prevent memory issues in long-running applications.
+        """
+        self._strm_entries.add(uid)
+        self._total_entries_processed += 1
+
+        # Cleanup memory periodically to prevent unbounded growth
+        if self._total_entries_processed > self._cleanup_threshold:
+            # Keep only the most recent entries by limiting set size
+            if len(self._strm_entries) > self._cleanup_threshold:
+                # Keep a reasonable number of entries (half the threshold)
+                entries_to_keep = self._cleanup_threshold // 2
+                # Convert to list and keep the last entries_to_keep items
+                entries_list = list(self._strm_entries)
+                self._strm_entries = set(entries_list[-entries_to_keep:])
+                logger.debug(
+                    "Cleaned up strm_entries set, current size: %d",
+                    len(self._strm_entries),
+                )
+            # Reset counter after cleanup
+            self._total_entries_processed = 0
+
     def _build_streaming_url(self, entry: Entry) -> str:
+        """
+        Build the streaming URL by joining the proxy URL and video ID.
+        Properly handles URL joining to avoid malformed URLs.
+        """
         strm_proxy_url = self.overrides.apply_formatter(
             formatter=self.plugin_options.strm_proxy_url, entry=entry
         )
         video_id = self.overrides.apply_formatter(
             formatter=self.plugin_options.video_id_variable, entry=entry
         )
+
+        # Ensure proxy URL ends with a slash for proper joining
+        if not strm_proxy_url.endswith("/"):
+            strm_proxy_url += "/"
+
         return f"{strm_proxy_url}{video_id}"
 
-    def _write_and_save_strm(self, entry: Entry) -> None:
+    def _write_and_save_strm(self, entry: Entry) -> bool:
         """
         Write a .strm file to the working directory and save it to the output directory.
         Used in conditional mode where we handle the file entirely at metadata time.
+
+        Returns True if the file was successfully created and saved, False otherwise.
         """
         streaming_url = self._build_streaming_url(entry)
 
@@ -159,21 +198,40 @@ class StrmFilePlugin(Plugin[StrmFileOptions]):
         strm_file_path = Path(self.working_directory) / strm_file_name
 
         if not self.is_dry_run:
-            os.makedirs(os.path.dirname(strm_file_path), exist_ok=True)
-            with open(strm_file_path, "w", encoding="utf-8") as f:
-                f.write(streaming_url)
+            try:
+                os.makedirs(os.path.dirname(strm_file_path), exist_ok=True)
+                with open(strm_file_path, "w", encoding="utf-8") as f:
+                    f.write(streaming_url)
+            except OSError as e:
+                logger.warning(
+                    "Failed to write .strm file for '%s': %s",
+                    entry.title,
+                    str(e),
+                )
+                return False
 
         strm_metadata = FileMetadata.from_dict(
             value_dict={"streaming_url": streaming_url},
             title="STRM file",
         )
 
-        self.save_file(
-            file_name=strm_file_name, file_metadata=strm_metadata, entry=entry
-        )
+        try:
+            self.save_file(
+                file_name=strm_file_name, file_metadata=strm_metadata, entry=entry
+            )
+        except Exception as e:
+            logger.warning(
+                "Failed to save .strm file for '%s': %s",
+                entry.title,
+                str(e),
+            )
+            return False
 
+        # Only delete temp file after confirming save was successful
         if not self.is_dry_run:
             FileHandler.delete(strm_file_path)
+
+        return True
 
     def _is_entry_before_threshold(self, entry: Entry) -> bool:
         """
@@ -237,9 +295,18 @@ class StrmFilePlugin(Plugin[StrmFileOptions]):
                 "Creating .strm file for '%s' (upload date before threshold)",
                 entry.title,
             )
-            self._write_and_save_strm(entry)
-            self._strm_entries.add(entry.ytdl_uid())
-            return None
+
+            # Add error recovery: only mark as strm entry if file was created successfully
+            if self._write_and_save_strm(entry):
+                self._add_strm_entry(entry.ytdl_uid())
+                return None
+            else:
+                # Fallback: allow the entry to be downloaded normally
+                logger.info(
+                    "Falling back to download for '%s' due to .strm creation failure",
+                    entry.title,
+                )
+                return entry
 
         return entry
 
@@ -260,10 +327,18 @@ class StrmFilePlugin(Plugin[StrmFileOptions]):
         entry.add({v.ext: "strm"})
 
         if not self.is_dry_run:
-            strm_file_path = Path(entry.get_download_file_path())
-            os.makedirs(os.path.dirname(strm_file_path), exist_ok=True)
-            with open(strm_file_path, "w", encoding="utf-8") as strm_file:
-                strm_file.write(streaming_url)
+            try:
+                strm_file_path = Path(entry.get_download_file_path())
+                os.makedirs(os.path.dirname(strm_file_path), exist_ok=True)
+                with open(strm_file_path, "w", encoding="utf-8") as strm_file:
+                    strm_file.write(streaming_url)
+            except OSError as e:
+                logger.warning(
+                    "Failed to write .strm file for '%s': %s",
+                    entry.title,
+                    str(e),
+                )
+                return entry
 
         return entry
 
