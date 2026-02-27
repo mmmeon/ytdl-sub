@@ -18,6 +18,7 @@ from ytdl_sub.plugins.format import FormatPlugin
 from ytdl_sub.plugins.match_filters import MatchFiltersPlugin
 from ytdl_sub.plugins.match_filters import combine_filters
 from ytdl_sub.plugins.match_filters import default_filters
+from ytdl_sub.plugins.strm_file import StrmFilePlugin
 from ytdl_sub.plugins.subtitles import SubtitlesPlugin
 from ytdl_sub.plugins.throttle_protection import ThrottleProtectionPlugin
 from ytdl_sub.utils.ffmpeg import FFMPEG
@@ -198,6 +199,7 @@ class SubscriptionYTDLOptions:
             self._plugin_ytdl_options(ChaptersPlugin),
             self._plugin_ytdl_options(FormatPlugin),
             self._plugin_ytdl_options(AudioExtractPlugin),  # will override format
+            self._plugin_ytdl_options(StrmFilePlugin),  # skip_download when strm_file is enabled
             self._user_ytdl_options,  # user ytdl options...
         )
         # Add dry run options last if enabled

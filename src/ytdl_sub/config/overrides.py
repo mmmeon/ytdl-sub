@@ -8,7 +8,9 @@ from typing import TypeVar
 
 from ytdl_sub.entries.entry import Entry
 from ytdl_sub.entries.script.variable_definitions import VARIABLES
-from ytdl_sub.entries.variables.override_variables import REQUIRED_OVERRIDE_VARIABLE_NAMES
+from ytdl_sub.entries.variables.override_variables import (
+    REQUIRED_OVERRIDE_VARIABLE_NAMES,
+)
 from ytdl_sub.entries.variables.override_variables import OverrideHelpers
 from ytdl_sub.script.parser import parse
 from ytdl_sub.script.script import Script
@@ -23,7 +25,9 @@ from ytdl_sub.utils.exceptions import ValidationException
 from ytdl_sub.utils.script import ScriptUtils
 from ytdl_sub.utils.scriptable import Scriptable
 from ytdl_sub.validators.string_formatter_validators import StringFormatterValidator
-from ytdl_sub.validators.string_formatter_validators import UnstructuredDictFormatterValidator
+from ytdl_sub.validators.string_formatter_validators import (
+    UnstructuredDictFormatterValidator,
+)
 
 ExpectedT = TypeVar("ExpectedT")
 
@@ -59,7 +63,10 @@ class Overrides(UnstructuredDictFormatterValidator, Scriptable):
     @classmethod
     def partial_validate(cls, name: str, value: Any) -> None:
         dict_formatter = UnstructuredDictFormatterValidator(name=name, value=value)
-        _ = [parse(format_string) for format_string in dict_formatter.dict_with_format_strings]
+        _ = [
+            parse(format_string)
+            for format_string in dict_formatter.dict_with_format_strings
+        ]
 
     def __init__(self, name, value):
         UnstructuredDictFormatterValidator.__init__(self, name, value)
@@ -162,7 +169,9 @@ class Overrides(UnstructuredDictFormatterValidator, Scriptable):
                             BuiltInFunction(
                                 name="throw",
                                 args=[
-                                    String(f"Plugin variable {var_name} has not been created yet")
+                                    String(
+                                        f"Plugin variable {var_name} has not been created yet"
+                                    )
                                 ],
                             )
                         ]
@@ -187,13 +196,29 @@ class Overrides(UnstructuredDictFormatterValidator, Scriptable):
             script = entry.script
             unresolvable = entry.unresolvable
 
+            # Fix: When applying formatter to an entry that has modified variables,
+            # remove those variables from the unresolvable set if they exist in the script
+            # This handles cases where plugins modify variables like 'ext'
+
+            # Find variables that are in unresolvable but exist in the script
+            # (meaning plugins have added them and they should be resolvable)
+            variables_to_remove = set()
+            for var_name in unresolvable:
+                if var_name in script._variables:
+                    variables_to_remove.add(var_name)
+
+            if variables_to_remove:
+                unresolvable = unresolvable - variables_to_remove
+
         # Update the script internally so long as we are not supplying overrides
         # that could alter the script with one-off state
         update = function_overrides is None
 
         try:
             return script.resolve_once(
-                dict({"tmp_var": formatter.format_string}, **(function_overrides or {})),
+                dict(
+                    {"tmp_var": formatter.format_string}, **(function_overrides or {})
+                ),
                 unresolvable=unresolvable,
                 update=update,
             )["tmp_var"]

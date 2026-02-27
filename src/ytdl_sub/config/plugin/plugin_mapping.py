@@ -29,6 +29,7 @@ from ytdl_sub.plugins.static_nfo_tags import StaticNfoTagsPlugin
 from ytdl_sub.plugins.subtitles import SubtitlesPlugin
 from ytdl_sub.plugins.throttle_protection import ThrottleProtectionPlugin
 from ytdl_sub.plugins.video_tags import VideoTagsPlugin
+from ytdl_sub.plugins.strm_file import StrmFilePlugin
 
 
 class PluginMapping:
@@ -50,6 +51,7 @@ class PluginMapping:
         "nfo_tags": NfoTagsPlugin,
         "output_directory_nfo_tags": OutputDirectoryNfoTagsPlugin,
         "static_nfo_tags": StaticNfoTagsPlugin,
+        "strm_file": StrmFilePlugin,
         "subtitles": SubtitlesPlugin,
         "chapters": ChaptersPlugin,
         "split_by_chapters": SplitByChaptersPlugin,
@@ -63,6 +65,7 @@ class PluginMapping:
         ThrottleProtectionPlugin,
         UrlDownloaderCollectionVariablePlugin,
         SubtitlesPlugin,
+        StrmFilePlugin,
         FilterExcludePlugin,
         FilterIncludePlugin,
         # add all others
@@ -72,6 +75,7 @@ class PluginMapping:
         UrlDownloaderThumbnailPlugin,
         AudioExtractPlugin,
         FileConvertPlugin,
+        StrmFilePlugin,
         ChaptersPlugin,
         SplitByChaptersPlugin,
         FilterExcludePlugin,
@@ -88,6 +92,7 @@ class PluginMapping:
         VideoTagsPlugin,
         NfoTagsPlugin,
         StaticNfoTagsPlugin,
+        StrmFilePlugin,
         SquareThumbnailPlugin,
         EmbedThumbnailPlugin,
     ]

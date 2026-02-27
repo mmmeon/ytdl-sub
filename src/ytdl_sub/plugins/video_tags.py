@@ -1,4 +1,5 @@
 from typing import Dict
+from typing import Optional
 
 from ytdl_sub.config.plugin.plugin import Plugin
 from ytdl_sub.config.validators.options import OptionsValidator
@@ -29,10 +30,14 @@ class VideoTagsOptions(DictFormatterValidator, OptionsValidator):
 class VideoTagsPlugin(Plugin[VideoTagsOptions]):
     plugin_options_type = VideoTagsOptions
 
-    def post_process_entry(self, entry: Entry) -> FileMetadata:
+    def post_process_entry(self, entry: Entry) -> Optional[FileMetadata]:
         """
         Tags the entry's audio file using values defined in the metadata options
         """
+        # Skip .strm files - they are text files, not media files
+        if entry.ext == "strm":
+            return None
+
         tags_to_write: Dict[str, str] = {}
         for tag_name, tag_formatter in sorted(self.plugin_options.dict.items()):
             tag_value = self.overrides.apply_formatter(formatter=tag_formatter, entry=entry)

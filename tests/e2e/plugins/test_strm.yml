@@ -1,0 +1,109 @@
+presets:
+  my_videos:
+    preset: preset.video.mp4
+
+subscriptions:
+  # Test standalone mode (all entries as .strm files)
+  strm_standalone:
+    preset: my_videos
+    source: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    output_options:
+      output_directory: "/tmp/ytdl_sub_test/standalone"
+    strm_file:
+      strm_proxy_url: "http://localhost:8096/proxy/"
+      video_id_variable: "{id}"
+      
+  # Test conditional mode (only old entries as .strm files)
+  strm_conditional:
+    preset: my_videos
+    source: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    output_options:
+      output_directory: "/tmp/ytdl_sub_test/conditional"
+    strm_file:
+      strm_proxy_url: "http://localhost:8096/proxy/"
+      video_id_variable: "{id}"
+      strm_before: "today-1year"  # Entries older than 1 year become .strm files
+
+  # Test with multiple videos (playlist source)
+  strm_playlist_multiple:
+    preset: my_videos
+    source: "https://www.youtube.com/playlist?list=PLbpi6ZahtOH6Blw3RGYpWkSByi_T7Rygb"
+    output_options:
+      output_directory: "/tmp/ytdl_sub_test/playlist_multiple"
+    strm_file:
+      strm_proxy_url: "http://localhost:8096/proxy/"
+      video_id_variable: "{id}"
+      
+  # Test with HTTPS proxy URL
+  strm_proxy_https:
+    preset: my_videos
+    source: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    output_options:
+      output_directory: "/tmp/ytdl_sub_test/proxy_https"
+    strm_file:
+      strm_proxy_url: "https://secure.proxy.com/stream/"
+      video_id_variable: "{id}"
+
+  # Test with custom port in proxy URL
+  strm_proxy_with_port:
+    preset: my_videos
+    source: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    output_options:
+      output_directory: "/tmp/ytdl_sub_test/proxy_port"
+    strm_file:
+      strm_proxy_url: "http://192.168.1.100:8096/"
+      video_id_variable: "{id}"
+      
+  # Test with different video ID variable format
+  strm_custom_video_id_variable:
+    preset: my_videos
+    source: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    output_options:
+      output_directory: "/tmp/ytdl_sub_test/custom_var"
+    strm_file:
+      strm_proxy_url: "http://localhost:8096/proxy/"
+      video_id_variable: "{video_id}"  # Uses different variable
+      
+  # Test with custom filename template
+  strm_custom_filename:
+    preset: my_videos
+    source: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    output_options:
+      output_directory: "/tmp/ytdl_sub_test/custom_filename"
+      file_name: "{upload_date} - {title}"
+    strm_file:
+      strm_proxy_url: "http://localhost:8096/proxy/"
+      video_id_variable: "{id}"
+      
+  # Test with absolute date threshold
+  strm_before_absolute_date:
+    preset: my_videos
+    source: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    output_options:
+      output_directory: "/tmp/ytdl_sub_test/absolute_date"
+    strm_file:
+      strm_proxy_url: "http://localhost:8096/proxy/"
+      video_id_variable: "{id}"
+      strm_before: "20220101"  # Absolute date format
+      
+  # Test with relative months threshold
+  strm_before_relative_months:
+    preset: my_videos
+    source: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    output_options:
+      output_directory: "/tmp/ytdl_sub_test/relative_months"
+    strm_file:
+      strm_proxy_url: "http://localhost:8096/proxy/"
+      video_id_variable: "{id}"
+      strm_before: "today-3months"
+      
+  # Test with output_format option
+  strm_with_output_format:
+    preset: my_videos
+    source: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    output_options:
+      output_directory: "/tmp/ytdl_sub_test/with_format"
+      output_format: "mp4"
+    strm_file:
+      strm_proxy_url: "http://localhost:8096/proxy/"
+      video_id_variable: "{id}"

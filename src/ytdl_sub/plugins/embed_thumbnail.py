@@ -81,6 +81,10 @@ class EmbedThumbnailPlugin(Plugin[EmbedThumbnailOptions]):
         if not self._embed_thumbnail:
             return None
 
+        # Skip .strm files - they are text files, not media files
+        if entry.ext == "strm":
+            return None
+
         if entry.ext == "webm":
             logger.warning("webm does not support embedded thumbnails, skipping")
             return None

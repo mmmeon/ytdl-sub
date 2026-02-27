@@ -938,6 +938,80 @@ Usage:
 
 ----------------------------------------------------------------------------------------------------
 
+strm_file
+---------
+Creates a .strm file for each entry that contains a URL for streaming the video
+without storing the actual video file locally. This is useful for media servers
+that support streaming from external sources.
+
+When used without ``strm_before``, the plugin operates in **standalone mode**:
+all entries become ``.strm`` files and ``skip_download`` is set automatically.
+
+When ``strm_before`` is set, the plugin operates in **conditional mode**: only
+entries with an upload date before the given threshold become ``.strm`` files.
+Entries within the threshold are downloaded normally. This is designed to pair
+with the ``Only Recent`` family of presets.
+
+The entry's file extension is changed to ``.strm``, so the standard
+``output_options.file_name`` controls the output file name.
+
+:Usage:
+
+.. code-block:: yaml
+
+   # Standalone: all entries become .strm files
+   strm_file:
+     strm_proxy_url: "http://localhost:8096/proxy/"
+     video_id_variable: "{id}"
+
+   # Conditional: only entries before the date become .strm files
+   strm_file:
+     strm_proxy_url: "http://localhost:8096/proxy/"
+     video_id_variable: "{id}"
+     strm_before: "today-2months"
+
+``enable``
+
+:expected type: Optional[OverridesFormatter]
+:description:
+  Can typically be left undefined to always default to enable. For preset convenience,
+  this field can be set using an override variable to easily toggle whether this plugin
+  is enabled or not via Boolean.
+
+
+``is_conditional``
+
+True when strm_before is set, meaning only some entries become .strm files.
+
+
+``strm_before``
+
+:expected type: Optional[OverridesFormatter]
+:description:
+  Optional. When set, only entries with an upload date **before** this
+  datetime become ``.strm`` files. Entries on or after this date are
+  downloaded normally. Uses yt-dlp datetime format
+  (e.g., ``today-2months``, ``20240101``). Can use override variables.
+
+
+``strm_proxy_url``
+
+:expected type: EntryFormatter
+:description:
+  The base URL for the streaming proxy. This will be prepended to the video ID.
+  Must use http or https protocol.
+
+
+``video_id_variable``
+
+:expected type: EntryFormatter
+:description:
+  The variable containing the video ID (e.g., "{id}", "{video_id}").
+  This will be appended to the proxy URL.
+
+
+----------------------------------------------------------------------------------------------------
+
 subtitles
 ---------
 Defines how to download and store subtitles. Using this plugin creates two new variables:

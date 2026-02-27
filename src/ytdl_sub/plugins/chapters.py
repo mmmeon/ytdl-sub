@@ -316,6 +316,11 @@ class ChaptersPlugin(Plugin[ChaptersOptions]):
         -------
         entry
         """
+        # Skip .strm files - they are text files, not media files
+        if entry.ext == "strm":
+            entry.add({ytdl_sub_chapters_from_comments: []})
+            return entry
+
         has_chapters_from_comments = False
 
         # If there are no embedded chapters, and comment chapters are allowed...

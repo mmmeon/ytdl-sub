@@ -1,0 +1,73 @@
+presets:
+
+  #############################################################################
+  # STRM
+  #   Creates .strm files instead of downloading actual video files.
+  #   Useful for media servers that support streaming from external sources.
+  #
+  #   When applied to any preset, all entries become .strm files containing
+  #   a streaming URL (strm_proxy_url + video_id_variable).
+
+  "STRM":
+    strm_file:
+      strm_proxy_url: "{strm_proxy_url}"
+      video_id_variable: "{strm_video_id}"
+
+    overrides:
+      strm_proxy_url: "http://localhost:8096/proxy/"
+      strm_video_id: "{uid}"
+
+  #############################################################################
+  # Only Recent STRM Archive
+  #   Downloads only recent videos (within only_recent_date_range) as actual
+  #   media files. Older videos get .strm files instead.
+  #
+  #   This is the "archive" variant meaning old files are NOT deleted - they
+  #   simply get .strm files instead of being downloaded.
+  #
+  #   Uses date_range with breaks: False so all entries are visible to the
+  #   strm_file plugin. The strm_file plugin's strm_before field then decides
+  #   which entries become .strm files vs downloads.
+
+  "Only Recent STRM Archive":
+    strm_file:
+      strm_proxy_url: "{strm_proxy_url}"
+      video_id_variable: "{strm_video_id}"
+      strm_before: "today-{only_recent_date_range}"
+
+    # Use date_range for outer bounds (how far back to create .strm files)
+    # Set breaks: False so yt-dlp doesn't stop when it hits old entries
+    date_range:
+      after: "today-{only_recent_strm_date_range}"
+      breaks: False
+
+    overrides:
+      # How recent is "recent"? Videos within this range are downloaded.
+      only_recent_date_range: "2months"
+
+      # How far back to create .strm files? Videos older than this are skipped.
+      # Defaults to same as only_recent_date_range (meaning no strm outer limit).
+      only_recent_strm_date_range: "{only_recent_date_range}"
+
+      # Streaming proxy settings
+      strm_proxy_url: "http://localhost:8096/proxy/"
+      strm_video_id: "{uid}"
+
+  #############################################################################
+  # Only Recent STRM
+  #   Like "Only Recent STRM Archive" but also deletes old media files that
+  #   fall outside the only_recent_date_range (same as "Only Recent" does).
+  #
+  #   Downloads recent videos, creates .strm for older ones, and deletes
+  #   media files that fall outside the recent range.
+
+  "Only Recent STRM":
+    preset:
+      - "Only Recent STRM Archive"
+
+    output_options:
+      keep_files_after: "today-{only_recent_date_range}"
+      keep_max_files: "{only_recent_max_files}"
+
+    overrides:
+      only_recent_max_files: 0
